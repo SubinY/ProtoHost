@@ -1,0 +1,18 @@
+{
+  "name": "protohost",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "infra:up": "docker compose -f docker-compose.infra.yml up -d",
+    "infra:down": "docker compose -f docker-compose.infra.yml down",
+    "dev": "pnpm --parallel --filter @protohost/frontend --filter @protohost/server dev",
+    "dev:web": "pnpm --filter @protohost/frontend dev",
+    "dev:server": "pnpm --filter @protohost/server dev",
+    "build": "pnpm --filter @protohost/frontend build && pnpm --filter @protohost/server build",
+    "db:push": "pnpm --filter @protohost/server db:push",
+    "db:migrate": "pnpm --filter @protohost/server db:migrate",
+    "seed": "pnpm --filter @protohost/server seed",
+    "test": "pnpm --filter @protohost/server test",
+    "smoke": "pnpm --filter @protohost/server smoke"
+  }
+}

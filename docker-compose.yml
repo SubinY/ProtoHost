@@ -1,46 +1,61 @@
-services:
-  mysql:
-    image: mysql:8.0
+name: protohost
+
+services:  postgres:
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: protohost
+      POSTGRES_USER: protohost
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: protohost
+    ports:
+      - "5434:5432"
     volumes:
-      - mysql_data:/var/lib/mysql
-      - ./backend/src/main/resources/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "pg_isready -U protohost -d protohost"]
       interval: 10s
       timeout: 5s
-      retries: 10
-      start_period: 90s
+      retries: 5
+      start_period: 10s
 
-  backend:
-    build: ./backend
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     restart: unless-stopped
     environment:
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/protohost?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      APP_JWT_SECRET: ${JWT_SECRET}
-      SPRING_MAIL_HOST: ${MAIL_HOST:-smtp.example.com}
-      SPRING_MAIL_PORT: ${MAIL_PORT:-587}
-      SPRING_MAIL_USERNAME: ${MAIL_USERNAME:-}
-      SPRING_MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      DATABASE_URL: postgres://protohost:${PG_PASSWORD}@postgres:5432/protohost
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-604800}
+      JWT_VIEW_EXPIRATION: ${JWT_VIEW_EXPIRATION:-7200}
+      UPLOAD_BASE_PATH: /app/uploads
+      PORT: 3000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:5173}
+      DEFAULT_USER_ENABLED: ${DEFAULT_USER_ENABLED:-true}
+      DEFAULT_USER_EMAIL: ${DEFAULT_USER_EMAIL:-root@protohost.local}
+      DEFAULT_USER_PASSWORD: ${DEFAULT_USER_PASSWORD:-root123456}
+      MAIL_HOST: ${MAIL_HOST:-smtp.example.com}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
     volumes:
-      - uploads:/app/uploads
+      - uploads_server:/app/uploads
+    ports:
+      - "3000:3000"
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
 
   frontend:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "${HTTP_PORT:-8080}:80"
     depends_on:
-      - backend
+      - server
 
 volumes:
-  mysql_data:
-  uploads:
+  postgres_data:
+  uploads_server:

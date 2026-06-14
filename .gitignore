@@ -2,19 +2,16 @@
 .env
 .env.local
 .env.*.local
-backend/src/main/resources/application.yml
 frontend/.env
 frontend/.env.local
 frontend/.env.*.local
 
 # Build outputs
-backend/target/
-backend/uploads/
-frontend/node_modules/
+server/uploads/
+server/.env
+node_modules/
 frontend/dist/
-*.class
-*.jar
-*.war
+server/dist/
 
 # Local workspace metadata
 .gemini/

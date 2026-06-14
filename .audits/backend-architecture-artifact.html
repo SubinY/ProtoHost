@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProtoHost Node 后端架构</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --surface: #141a22;
+      --surface2: #1a222d;
+      --border: #2a3544;
+      --text: #e8edf4;
+      --muted: #8b9bb0;
+      --accent: #3d9eff;
+      --accent-dim: #2563a8;
+      --green: #34d399;
+      --amber: #fbbf24;
+      --rose: #f87171;
+      --violet: #a78bfa;
+      --cyan: #22d3ee;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      min-height: 100vh;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(61, 158, 255, 0.08), transparent),
+        radial-gradient(ellipse 60% 40% at 90% 100%, rgba(167, 139, 250, 0.06), transparent);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    header {
+      margin-bottom: 2.5rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      color: var(--muted);
+      margin-top: 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    .badge.accent { color: var(--accent); border-color: var(--accent-dim); }
+    .badge.green { color: var(--green); border-color: rgba(52, 211, 153, 0.3); }
+
+    nav.tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.35rem;
+      flex-wrap: wrap;
+    }
+
+    nav.tabs button {
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      padding: 0.5rem 1rem;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 7px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    nav.tabs button:hover { color: var(--text); background: var(--surface2); }
+    nav.tabs button.active {
+      background: var(--accent-dim);
+      color: #fff;
+    }
+
+    .panel { display: none; animation: fade 0.25s ease; }
+    .panel.active { display: block; }
+
+    @keyframes fade {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 800px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+    }
+
+    .card h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    .card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    /* Architecture diagram */
+    .arch-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      align-items: stretch;
+    }
+
+    .arch-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .arch-arrow {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.75rem;
+      padding: 0.15rem 0;
+    }
+
+    .arch-box {
+      flex: 1;
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+      border: 1px solid var(--border);
+      position: relative;
+    }
+
+    .arch-box .label {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+    }
+
+    .arch-box .title { font-weight: 600; font-size: 1.05rem; }
+    .arch-box .desc { font-size: 0.82rem; color: var(--muted); margin-top: 0.35rem; }
+
+    .arch-box.vue { background: linear-gradient(135deg, #1a2e1f 0%, var(--surface) 100%); border-color: rgba(52, 211, 153, 0.35); }
+    .arch-box.vue .label { color: var(--green); }
+
+    .arch-box.nginx { background: linear-gradient(135deg, #1e2838 0%, var(--surface) 100%); border-color: rgba(61, 158, 255, 0.35); }
+    .arch-box.nginx .label { color: var(--accent); }
+
+    .arch-box.koa { background: linear-gradient(135deg, #1a2438 0%, var(--surface) 100%); border-color: rgba(61, 158, 255, 0.5); }
+    .arch-box.koa .label { color: var(--cyan); }
+
+    .arch-split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .arch-box.pg { border-color: rgba(167, 139, 250, 0.4); background: linear-gradient(135deg, #221a38 0%, var(--surface) 100%); }
+    .arch-box.pg .label { color: var(--violet); }
+
+    .arch-box.fs { border-color: rgba(251, 191, 36, 0.35); background: linear-gradient(135deg, #2a2218 0%, var(--surface) 100%); }
+    .arch-box.fs .label { color: var(--amber); }
+
+    /* Layer stack */
+    .layer-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .layer {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 1rem;
+      align-items: start;
+      padding: 0.85rem 1rem;
+      background: var(--surface2);
+      border-radius: 8px;
+      border-left: 3px solid var(--border);
+    }
+
+    .layer.l1 { border-left-color: var(--accent); }
+    .layer.l2 { border-left-color: var(--cyan); }
+    .layer.l3 { border-left-color: var(--green); }
+    .layer.l4 { border-left-color: var(--violet); }
+    .layer.l5 { border-left-color: var(--amber); }
+
+    .layer-name {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+
+    .layer-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .chip {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      padding: 0.2rem 0.55rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+    }
+
+  .chip.warn { border-color: rgba(248, 113, 113, 0.4); color: var(--rose); }
+
+    /* Module map */
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .module-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+    }
+
+    .module-card h4 {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .module-card ul {
+      list-style: none;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .module-card li {
+      padding: 0.2rem 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+    }
+
+    .module-card .risk {
+      margin-top: 0.65rem;
+      font-size: 0.72rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: 5px;
+      background: rgba(248, 113, 113, 0.1);
+      color: var(--rose);
+      border: 1px solid rgba(248, 113, 113, 0.25);
+    }
+
+    /* Timeline */
+    .timeline {
+      position: relative;
+      padding-left: 1.5rem;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 0.35rem;
+      top: 0.5rem;
+      bottom: 0.5rem;
+      width: 2px;
+      background: var(--border);
+    }
+
+    .phase {
+      position: relative;
+      margin-bottom: 1.25rem;
+      padding-left: 1rem;
+    }
+
+    .phase::before {
+      content: '';
+      position: absolute;
+      left: -1.15rem;
+      top: 0.45rem;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--bg);
+    }
+
+    .phase.done::before { background: var(--green); }
+
+    .phase h4 { font-size: 0.9rem; font-weight: 600; }
+    .phase .days { font-size: 0.75rem; color: var(--muted); }
+    .phase p { font-size: 0.82rem; color: var(--muted); margin-top: 0.35rem; }
+
+    /* Compare table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+
+    th, td {
+      padding: 0.6rem 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    tr:hover td { background: var(--surface2); }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      background: var(--bg);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    .request-flow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      line-height: 1.8;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+
+    .request-flow .hl { color: var(--accent); }
+    .request-flow .hl2 { color: var(--green); }
+    .request-flow .hl3 { color: var(--violet); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>ProtoHost · Node 后端目标架构</h1>
+      <p>Koa + PostgreSQL + Drizzle + Zod · 新目录 <code>server/</code> · 空库直接替换 · API 兼容</p>
+      <div class="badge-row">
+        <span class="badge accent">pnpm workspace 根目录</span>
+        <span class="badge green">docker-compose.server.yml</span>
+        <span class="badge">Axure 照抄 Java 注入</span>
+        <span class="badge">预估 ~2 周</span>
+      </div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="active" data-tab="overview">系统拓扑</button>
+      <button data-tab="layers">分层结构</button>
+      <button data-tab="modules">业务模块</button>
+      <button data-tab="request">请求链路</button>
+      <button data-tab="migrate">替换对照</button>
+      <button data-tab="phases">迁移阶段</button>
+    </nav>
+
+    <!-- Overview -->
+    <section id="overview" class="panel active">
+      <div class="grid-2">
+        <div class="card">
+          <h2>目标部署拓扑</h2>
+          <div class="arch-flow">
+            <div class="arch-box vue">
+              <div class="label">Client</div>
+              <div class="title">Vue 3 SPA（不变）</div>
+              <div class="desc">Vite · Pinia · Axios → /api/* · JWT in localStorage</div>
+            </div>
+            <div class="arch-arrow">↓ HTTP · Bearer / viewToken</div>
+            <div class="arch-box nginx">
+              <div class="label">Reverse Proxy</div>
+              <div class="title">Nginx (frontend 容器)</div>
+              <div class="desc">静态资源 + proxy_pass /api → backend · max 210MB</div>
+            </div>
+            <div class="arch-arrow">↓</div>
+            <div class="arch-box koa">
+              <div class="label">API Server · server/</div>
+              <div class="title">Koa 2 + TypeScript</div>
+              <div class="desc">JWT · Multer · 普通静态 stream + Axure 照抄注入 · Zod</div>
+            </div>
+            <div class="arch-arrow">↓</div>
+            <div class="arch-split">
+              <div class="arch-box pg">
+                <div class="label">Database</div>
+                <div class="title">PostgreSQL 16</div>
+                <div class="desc">Drizzle ORM · 4 表 · drizzle-kit migrate</div>
+              </div>
+              <div class="arch-box fs">
+                <div class="label">Storage</div>
+                <div class="title">uploads/ 卷</div>
+                <div class="desc">ZIP 解压 · 版本目录 · 分享静态文件</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>为何选 Koa 而非 Next.js</h2>
+          <table>
+            <thead>
+              <tr><th>需求</th><th>Koa</th><th>Next.js API</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>200MB multipart</td><td>✓ multer 成熟</td><td>需额外配置</td></tr>
+              <tr><td>HTML/JS 内容改写</td><td>✓ 完全可控</td><td>✗ 不适合</td></tr>
+              <tr><td>流式 ZIP 下载</td><td>✓ ReadStream</td><td>可行但别扭</td></tr>
+              <tr><td>纯 API 无 SSR</td><td>✓ 轻量</td><td>框架偏重</td></tr>
+              <tr><td>Vue 分离部署</td><td>✓ 天然匹配</td><td>需刻意分离</td></tr>
+            </tbody>
+          </table>
+          <p style="margin-top:1rem;font-size:0.82rem;color:var(--muted)">
+            Next.js 适合同仓全栈 + RSC。ProtoHost 核心是文件服务与 Axure 适配，Koa 更合适。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Layers -->
+    <section id="layers" class="panel">
+      <div class="card">
+        <h2>server/src 分层职责</h2>
+        <div class="layer-stack" style="margin-top:0.5rem">
+          <div class="layer l1">
+            <div class="layer-name">Entry</div>
+            <div class="layer-items">
+              <span class="chip">index.ts</span>
+              <span class="chip">app.ts</span>
+              <span class="chip">config/env.ts</span>
+            </div>
+          </div>
+          <div class="layer l2">
+            <div class="layer-name">Middleware</div>
+            <div class="layer-items">
+              <span class="chip">cors.ts</span>
+              <span class="chip">auth.ts</span>
+              <span class="chip">error-handler.ts</span>
+              <span class="chip">request-logger.ts</span>
+            </div>
+          </div>
+          <div class="layer l3">
+            <div class="layer-name">Routes</div>
+            <div class="layer-items">
+              <span class="chip">auth.routes.ts</span>
+              <span class="chip">group.routes.ts</span>
+              <span class="chip">project.routes.ts</span>
+              <span class="chip">share.routes.ts</span>
+            </div>
+          </div>
+          <div class="layer l4">
+            <div class="layer-name">Services</div>
+            <div class="layer-items">
+              <span class="chip">auth.service.ts</span>
+              <span class="chip">verification.service.ts</span>
+              <span class="chip">project.service.ts</span>
+              <span class="chip">version.service.ts</span>
+              <span class="chip">upload.service.ts</span>
+              <span class="chip">share.service.ts</span>
+              <span class="chip warn">axure-injector.ts</span>
+              <span class="chip">static-file.service.ts</span>
+            </div>
+          </div>
+          <div class="layer l5">
+            <div class="layer-name">Data / Lib</div>
+            <div class="layer-items">
+              <span class="chip">db/schema/*</span>
+              <span class="chip">drizzle client</span>
+              <span class="chip">lib/jwt.ts</span>
+              <span class="chip">lib/zip.ts</span>
+              <span class="chip">lib/mailer.ts</span>
+              <span class="chip">lib/fs-utils.ts</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <h2>目录树（精简）</h2>
+        <pre class="request-flow" style="margin-top:0.5rem">server/          <span class="hl2"># 新 Node 后端（backend/ Java 暂留对照）</span>
+├── src/
+│   ├── modules/share/
+│   │   ├── static-file.ts     <span class="hl"># 普通 js/css/html 流式</span>
+│   │   └── axure-injector.ts  <span class="hl2"># 照抄 ShareController 注入</span>
+│   ├── db/schema/             <span class="hl3"># PG 空库 drizzle migrate</span>
+│   └── ...
+├── drizzle.config.ts
+└── scripts/seed-default-user.ts</pre>
+      </div>
+    </section>
+
+    <!-- Modules -->
+    <section id="modules" class="panel">
+      <div class="card">
+        <h2>业务模块映射（Spring → Node）</h2>
+        <div class="module-grid" style="margin-top:0.5rem">
+          <div class="module-card">
+            <h4><span class="dot" style="background:var(--accent)"></span>auth</h4>
+            <ul>
+              <li>POST /api/auth/login</li>
+              <li>POST /api/auth/register</li>
+              <li>POST /api/auth/send-*-code</li>
+              <li>POST /api/auth/reset-password</li>
+            </ul>
+          </div>
+          <div class="module-card">
+            <h4><span class="dot" style="background:var(--cyan)"></span>groups</h4>
+            <ul>
+              <li>GET/POST /api/groups</li>
+              <li>PUT/DELETE /api/groups/:id</li>
+              <li>PUT /api/groups/sort</li>
+            </ul>
+          </div>
+          <div class="module-card">
+            <h4><span class="dot" style="background:var(--green)"></span>projects</h4>
+            <ul>
+              <li>GET /api/projects</li>
+              <li>POST /api/projects/upload</li>
+              <li>PUT settings / group</li>
+              <li>versions + download</li>
+            </ul>
+          </div>
+          <div class="module-card">
+            <h4><span class="dot" style="background:var(--rose)"></span>share</h4>
+            <ul>
+              <li>GET /:slug/meta</li>
+              <li>POST /:slug/verify</li>
+              <li>GET /:slug/files/**</li>
+            </ul>
+            <div class="risk" style="border-color:rgba(251,191,36,0.35);color:var(--amber);background:rgba(251,191,36,0.08)">照抄 Java：仅 axplayer.js/doc.js/html 注入，其余普通静态</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Request flow -->
+    <section id="request" class="panel">
+      <div class="grid-2">
+        <div class="card">
+          <h2>认证请求链路</h2>
+          <pre class="request-flow">Client  POST /api/auth/login
+  → Nginx proxy
+  → <span class="hl">Koa Router</span>
+  → <span class="hl2">Zod safeParse(body)</span>
+  → auth.service.login()
+      → drizzle: users.findByEmail
+      → bcrypt.compare
+      → jose.sign({ sub: userId })
+  → { token, email }</pre>
+        </div>
+        <div class="card">
+          <h2>私密分享预览链路</h2>
+          <pre class="request-flow">ViewPage  POST /api/share/:slug/verify
+  → share.service.verifyPassword()
+  → jose.sign({ type:'view', slug })  <span class="hl3">viewToken 2h</span>
+
+iframe  GET /files/start.html?viewToken=...
+  → share.routes.serveFile()
+  → 路径 canonical 校验
+  → 若 .html → <span class="hl2">axure-injector</span> 注入 script
+  → 若 axplayer.js / doc.js → 字符串替换
+  → 其他资源直接 ReadStream</pre>
+        </div>
+      </div>
+      <div class="card" style="margin-top:1rem">
+        <h2>上传请求链路</h2>
+        <pre class="request-flow">UploadPage  POST /api/projects/upload  (multipart 200MB)
+  → <span class="hl">@koa/multer</span> 临时文件 / 流
+  → auth 中间件 → userId
+  → upload.service:
+      1. lib/zip.extract → uploads/{userId}/{ts}/
+      2. 检测 entryFile (index.html / start.html)
+      3. db.transaction:
+         - insert/update projects
+         - insert project_versions
+      4. 失败 → 删除目录 rollback
+  → ProjectDTO JSON</pre>
+      </div>
+    </section>
+
+    <!-- Migrate table -->
+    <section id="migrate" class="panel">
+      <div class="card">
+        <h2>Spring 组件 → Node 替换清单</h2>
+        <table style="margin-top:0.5rem">
+          <thead>
+            <tr><th>现状</th><th>替换</th><th>备注</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Spring Boot MVC</td><td><code>Koa + @koa/router</code></td><td>纯 API</td></tr>
+            <tr><td>MyBatis-Plus</td><td><code>drizzle-orm</code></td><td>+ drizzle-kit</td></tr>
+            <tr><td>MySQL 8</td><td><code>PostgreSQL 16</code></td><td>pgloader 迁数据</td></tr>
+            <tr><td>手写 DTO</td><td><code>zod</code> + drizzle-zod</td><td>可共享到前端</td></tr>
+            <tr><td>Spring Security JWT</td><td><code>jose</code> + 中间件</td><td>保持 HS256 secret</td></tr>
+            <tr><td>BCryptPasswordEncoder</td><td><code>bcrypt</code></td><td>哈希可复用</td></tr>
+            <tr><td>Spring Mail</td><td><code>nodemailer</code></td><td>SMTP 配置对齐</td></tr>
+            <tr><td>VerificationCode 内存</td><td>Map+TTL 或 <code>ioredis</code></td><td>生产用 Redis</td></tr>
+            <tr><td>MultipartFile</td><td><code>@koa/multer</code></td><td>200MB 双侧限制</td></tr>
+            <tr><td>ZipUtil</td><td><code>adm-zip</code></td><td>保留 entry 检测</td></tr>
+            <tr><td>JUnit</td><td><code>vitest</code> + supertest</td><td>Share 集成测试</td></tr>
+            <tr><td>application.yml</td><td><code>.env</code> + Zod env</td><td>—</td></tr>
+            <tr><td>DefaultUserInitializer</td><td>seed 脚本</td><td>生产禁用</td></tr>
+            <tr><td>CORS 硬编码</td><td><code>CORS_ORIGINS</code></td><td>环境变量</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:1rem">
+        <h2>前端无需改动项</h2>
+        <table>
+          <tbody>
+            <tr><td>API 路径</td><td><code>/api/*</code> 保持不变</td></tr>
+            <tr><td>JSON 字段</td><td>camelCase 一致</td></tr>
+            <tr><td>Auth 响应</td><td><code>{ token, email }</code></td></tr>
+            <tr><td>dev proxy</td><td>仅改端口 8080→3000</td></tr>
+            <tr><td>nginx</td><td>仅改 upstream 端口</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Phases -->
+    <section id="phases" class="panel">
+      <div class="card">
+        <h2>迁移阶段（单人 2–3 周）</h2>
+        <div class="timeline" style="margin-top:1rem">
+          <div class="phase">
+            <h4>Phase 0 · 准备</h4>
+            <div class="days">1–2 天</div>
+            <p>API 契约冻结 · Share golden test · 项目骨架</p>
+          </div>
+          <div class="phase">
+            <h4>Phase 1 · 数据层</h4>
+            <div class="days">2–3 天</div>
+            <p>Drizzle 四表 · migrate · seed 默认用户</p>
+          </div>
+          <div class="phase">
+            <h4>Phase 2 · Auth + Groups</h4>
+            <div class="days">2–3 天</div>
+            <p>JWT · 邮件验证码 · 分组 CRUD</p>
+          </div>
+          <div class="phase">
+            <h4>Phase 3 · Projects</h4>
+            <div class="days">3–5 天</div>
+            <p>上传解压 · 版本 · 下载 ZIP</p>
+          </div>
+          <div class="phase">
+            <h4>Phase 4 · Share ⚠</h4>
+            <div class="days">3–5 天</div>
+            <p>静态服务 · Axure 注入对齐 Java · ViewPage 回归</p>
+          </div>
+          <div class="phase">
+            <h4>Phase 5 · 部署切换</h4>
+            <div class="days">1–2 天</div>
+            <p>Docker · compose PG · 数据迁移 · 归档 Java</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    document.querySelectorAll('nav.tabs button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('nav.tabs button').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+  </script>
+</body>
+</html>
