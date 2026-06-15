@@ -8,6 +8,7 @@ frontend/.env.*.local
 
 # Build outputs
 server/uploads/
+server/data/
 server/.env
 node_modules/
 frontend/dist/

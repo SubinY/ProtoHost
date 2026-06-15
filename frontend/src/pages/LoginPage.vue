@@ -12,27 +12,36 @@
         <h2 class="text-xl font-heading font-semibold text-center">登录</h2>
         <form @submit.prevent="submit" class="space-y-4">
           <div class="space-y-1">
-            <label class="text-sm font-medium">邮箱</label>
-            <input v-model="email" type="email" required placeholder="your@email.com"
-              class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" />
+            <label class="text-sm font-medium">账号</label>
+            <input
+              v-model="email"
+              type="text"
+              required
+              autocomplete="username"
+              placeholder="admin"
+              class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
           </div>
           <div class="space-y-1">
-            <div class="flex justify-between items-center">
-              <label class="text-sm font-medium">密码</label>
-              <router-link to="/forgot-password" class="text-xs text-primary hover:underline">忘记密码？</router-link>
-            </div>
-            <input v-model="password" type="password" required minlength="6" placeholder="••••••••"
-              class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50" />
+            <label class="text-sm font-medium">密码</label>
+            <input
+              v-model="password"
+              type="password"
+              required
+              minlength="6"
+              placeholder="••••••••"
+              class="w-full px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
           </div>
           <p v-if="error" class="text-sm text-destructive">{{ error }}</p>
-          <button type="submit" :disabled="loading"
-            class="w-full gradient-primary text-white font-medium py-2 rounded-md text-sm disabled:opacity-60">
+          <button
+            type="submit"
+            :disabled="loading"
+            class="w-full gradient-primary text-white font-medium py-2 rounded-md text-sm disabled:opacity-60"
+          >
             {{ loading ? '登录中...' : '登录' }}
           </button>
         </form>
-        <p class="text-center text-sm">
-          <router-link to="/register" class="text-primary hover:underline">没有账号？立即注册</router-link>
-        </p>
       </div>
     </div>
   </div>

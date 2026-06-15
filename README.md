@@ -175,7 +175,12 @@ ProtoHost/
 
 ## 数据结构
 
-核心表（PostgreSQL）：
+元数据支持两种存储（由 `STORAGE_DRIVER` 控制）：
+
+- **json**（默认）：`JSON_STORE_PATH` 目录下的 JSON 文件
+- **postgres**：PostgreSQL 四张表
+
+核心实体（两种模式字段一致）：
 
 - `users`：用户
 - `project_groups`：项目分组
@@ -186,9 +191,11 @@ ProtoHost/
 
 - `projects.share_slug` 用于生成外部访问链接
 - `projects.entry_file` 表示原型入口文件，默认 `index.html`
-- `projects.storage_path` 与 `project_versions.storage_path` 用于定位上传文件存储目录
+- `projects.storage_path` 与 `project_versions.storage_path` 用于定位上传文件存储目录（均在 `UPLOAD_BASE_PATH` 下）
 
 ## Docker Compose
+
+### PostgreSQL 模式（默认）
 
 适合快速体验或本地完整联调。
 
@@ -216,6 +223,23 @@ docker compose up --build
 默认通过 `http://localhost:8080` 访问（由 `HTTP_PORT` 控制）。
 
 健康检查：`http://localhost:3000/api/health` 或 `http://localhost:8080/api/health`。
+
+### JSON 模式（无数据库）
+
+小团队内部部署时，可跳过 PostgreSQL，元数据写入 JSON 文件：
+
+```bash
+docker compose -f docker-compose.json.yml up --build
+```
+
+仅需配置 `JWT_SECRET`（`.env`）。数据持久化在两个 volume：
+
+- `json_data` → `/app/data`（元数据 JSON）
+- `uploads_server` → `/app/uploads`（原型静态文件）
+
+备份时拷贝上述两个目录即可。默认账号仍为 `admin` / `Admin1234`。
+
+本地开发 json 模式：在 `server/.env` 中设置 `STORAGE_DRIVER=json`，无需 `DATABASE_URL` 与 `pnpm db:push`。
 
 ## 本地开发
 
@@ -262,7 +286,18 @@ pnpm dev
 - 前端：`http://localhost:5173`（Vite，API 代理到 `localhost:3000`）
 - 后端：`http://localhost:3000`
 
-默认种子用户（`DEFAULT_USER_ENABLED=true` 时）：`root@protohost.local` / `root123456`。
+默认种子用户（`DEFAULT_USER_ENABLED=true` 时）：`admin` / `Admin1234`（超管）。
+
+### 账号与权限
+
+- **超管（admin）**：左侧菜单「用户管理」— 创建/编辑/启用/禁用/删除子用户
+- **子用户**：仅可使用「修改密码」；无法访问用户管理
+- **公开注册已关闭**：新账号由超管创建
+
+| 菜单 | 路由 | 权限 |
+|---|---|---|
+| 修改密码 | `/account/password` | 所有登录用户 |
+| 用户管理 | `/admin/users` | 仅超管 |
 
 ### 常用脚本
 

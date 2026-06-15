@@ -22,3 +22,11 @@ export interface ProjectGroup {
   createdAt: string
   updatedAt: string
 }
+
+export interface ManagedUser {
+  id: number
+  email: string
+  role: 'admin' | 'user'
+  enabled: boolean
+  createdAt: string
+}

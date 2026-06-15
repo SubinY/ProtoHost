@@ -1,8 +1,6 @@
-import { eq } from 'drizzle-orm'
 import fs from 'fs'
 import path from 'path'
-import { db } from '../../db/index.js'
-import { projects } from '../../db/schema/index.js'
+import { storage } from '../../storage/index.js'
 import { env } from '../../config/env.js'
 import { AppError } from '../../lib/errors.js'
 import { generateViewToken, isViewToken } from '../../lib/jwt.js'
@@ -16,11 +14,10 @@ import {
 } from './axure-injector.js'
 
 export async function getMeta(slug: string) {
-  const [p] = await db.select().from(projects).where(eq(projects.shareSlug, slug)).limit(1)
+  const p = await storage.projects.findByShareSlug(slug)
   if (!p) throw new AppError('项目不存在')
 
-  const viewCount = Number(p.viewCount) + 1
-  await db.update(projects).set({ viewCount }).where(eq(projects.id, p.id))
+  const viewCount = await storage.projects.incrementViewCount(p.id)
 
   return {
     name: p.name,
@@ -32,7 +29,7 @@ export async function getMeta(slug: string) {
 }
 
 export async function verify(slug: string, password?: string) {
-  const [p] = await db.select().from(projects).where(eq(projects.shareSlug, slug)).limit(1)
+  const p = await storage.projects.findByShareSlug(slug)
   if (!p) throw new AppError('项目不存在')
 
   if (p.isPublic || !p.accessPasswordHash) {
@@ -58,7 +55,7 @@ export async function serveFile(
   subPath: string,
   viewToken?: string | null,
 ): Promise<ServeFileResult> {
-  const [p] = await db.select().from(projects).where(eq(projects.shareSlug, slug)).limit(1)
+  const p = await storage.projects.findByShareSlug(slug)
   if (!p) throw new AppError('项目不存在')
 
   const decodedPath = decodeURIComponent(subPath)

@@ -1,18 +1,14 @@
-import { and, desc, eq, inArray, isNull, max } from 'drizzle-orm'
 import path from 'path'
 import { randomBytes } from 'crypto'
-import { db } from '../../db/index.js'
-import { projects, projectVersions } from '../../db/schema/index.js'
+import { storage } from '../../storage/index.js'
+import type { Project } from '../../storage/types.js'
 import { env } from '../../config/env.js'
 import { AppError } from '../../lib/errors.js'
 import { deleteDirectory, getDirSize } from '../../lib/fs-utils.js'
 import { hashPassword } from '../../lib/password.js'
 import { extractZip, zipFolder } from '../../lib/zip.js'
 
-function toDto(
-  p: typeof projects.$inferSelect,
-  fileSize?: number | null,
-) {
+function toDto(p: Project, fileSize?: number | null) {
   return {
     id: p.id,
     groupId: p.groupId ?? undefined,
@@ -31,40 +27,12 @@ function toDto(
 }
 
 export async function listByUser(userId: number, groupId?: number | null) {
-  let rows
-
-  if (groupId != null && groupId !== undefined) {
-    if (groupId === 0) {
-      rows = await db
-        .select()
-        .from(projects)
-        .where(and(eq(projects.userId, userId), isNull(projects.groupId)))
-        .orderBy(desc(projects.updatedAt))
-    } else {
-      rows = await db
-        .select()
-        .from(projects)
-        .where(and(eq(projects.userId, userId), eq(projects.groupId, groupId)))
-        .orderBy(desc(projects.updatedAt))
-    }
-  } else {
-    rows = await db
-      .select()
-      .from(projects)
-      .where(eq(projects.userId, userId))
-      .orderBy(desc(projects.updatedAt))
-  }
-
-  return Promise.all(rows.map((p) => attachFileSize(p)))
+  const rows = await storage.projects.listByUserId(userId, groupId)
+  return Promise.all(rows.map((p: Project) => attachFileSize(p)))
 }
 
-async function attachFileSize(project: typeof projects.$inferSelect) {
-  const [latest] = await db
-    .select()
-    .from(projectVersions)
-    .where(eq(projectVersions.projectId, project.id))
-    .orderBy(desc(projectVersions.createdAt))
-    .limit(1)
+async function attachFileSize(project: Project) {
+  const latest = await storage.versions.findLatestByProjectId(project.id)
   return toDto(project, latest?.fileSize)
 }
 
@@ -89,14 +57,10 @@ export async function upload(
   const result = await extractZip(fileBuffer, destDir)
   const fileSize = await getDirSize(destDir)
 
-  let project: typeof projects.$inferSelect
+  let project: Project
 
   if (opts.projectId) {
-    const [existing] = await db
-      .select()
-      .from(projects)
-      .where(and(eq(projects.id, opts.projectId), eq(projects.userId, userId)))
-      .limit(1)
+    const existing = await storage.projects.findByIdAndUser(userId, opts.projectId)
     if (!existing) throw new AppError('项目不存在')
 
     if (opts.isReplace) {
@@ -110,23 +74,18 @@ export async function upload(
       accessPasswordHash = await hashPassword(opts.accessPassword)
     }
 
-    const [updated] = await db
-      .update(projects)
-      .set({
-        name: opts.name,
-        version,
-        description: opts.description ?? null,
-        isPublic: opts.isPublic,
-        accessPasswordHash,
-        storagePath,
-        entryFile: result.entryFile,
-        groupId: opts.groupId ?? null,
-        lastUpdatedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(projects.id, existing.id))
-      .returning()
-    project = updated
+    project = await storage.projects.update(existing.id, {
+      name: opts.name,
+      version,
+      description: opts.description ?? null,
+      isPublic: opts.isPublic,
+      accessPasswordHash,
+      storagePath,
+      entryFile: result.entryFile,
+      groupId: opts.groupId ?? null,
+      lastUpdatedAt: new Date(),
+      updatedAt: new Date(),
+    })
   } else {
     const version = opts.version && opts.version.trim() ? opts.version : '1.0.0'
     const accessPasswordHash =
@@ -134,27 +93,23 @@ export async function upload(
         ? await hashPassword(opts.accessPassword)
         : null
 
-    const [inserted] = await db
-      .insert(projects)
-      .values({
-        userId,
-        name: opts.name,
-        version,
-        description: opts.description ?? null,
-        isPublic: opts.isPublic,
-        accessPasswordHash,
-        shareSlug: randomBytes(8).toString('hex'),
-        entryFile: result.entryFile,
-        storagePath,
-        groupId: opts.groupId ?? null,
-        viewCount: 0,
-        lastUpdatedAt: new Date(),
-      })
-      .returning()
-    project = inserted
+    project = await storage.projects.create({
+      userId,
+      name: opts.name,
+      version,
+      description: opts.description ?? null,
+      isPublic: opts.isPublic,
+      accessPasswordHash,
+      shareSlug: randomBytes(8).toString('hex'),
+      entryFile: result.entryFile,
+      storagePath,
+      groupId: opts.groupId ?? null,
+      viewCount: 0,
+      lastUpdatedAt: new Date(),
+    })
   }
 
-  await db.insert(projectVersions).values({
+  await storage.versions.create({
     projectId: project.id,
     versionNumber: project.version,
     changelog: opts.changelog ?? null,
@@ -166,38 +121,25 @@ export async function upload(
 }
 
 export async function deleteProject(userId: number, projectId: number) {
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1)
+  const project = await storage.projects.findByIdAndUser(userId, projectId)
   if (!project) throw new AppError('项目不存在')
 
-  const versions = await db
-    .select()
-    .from(projectVersions)
-    .where(eq(projectVersions.projectId, projectId))
+  const versions = await storage.versions.listByProjectId(projectId)
 
   for (const v of versions) {
     await deleteDirectory(path.join(env.UPLOAD_BASE_PATH, v.storagePath))
   }
   await deleteDirectory(path.join(env.UPLOAD_BASE_PATH, project.storagePath))
-  await db.delete(projects).where(eq(projects.id, projectId))
+  await storage.versions.deleteByProjectId(projectId)
+  await storage.projects.delete(projectId)
 }
 
 export async function updateGroup(userId: number, projectId: number, groupId?: number | null) {
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1)
+  const project = await storage.projects.findByIdAndUser(userId, projectId)
   if (!project) throw new AppError('项目不存在')
 
   const gid = groupId == null || groupId === 0 ? null : groupId
-  await db
-    .update(projects)
-    .set({ groupId: gid, updatedAt: new Date() })
-    .where(eq(projects.id, projectId))
+  await storage.projects.update(projectId, { groupId: gid, updatedAt: new Date() })
 }
 
 export async function updateSettings(
@@ -206,11 +148,7 @@ export async function updateSettings(
   isPublic: boolean,
   accessPassword?: string | null,
 ) {
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1)
+  const project = await storage.projects.findByIdAndUser(userId, projectId)
   if (!project) throw new AppError('项目不存在')
 
   let accessPasswordHash = project.accessPasswordHash
@@ -220,49 +158,24 @@ export async function updateSettings(
     accessPasswordHash = null
   }
 
-  await db
-    .update(projects)
-    .set({ isPublic, accessPasswordHash, updatedAt: new Date() })
-    .where(eq(projects.id, projectId))
+  await storage.projects.update(projectId, {
+    isPublic,
+    accessPasswordHash,
+    updatedAt: new Date(),
+  })
 }
 
 export async function listVersions(userId: number, projectId: number) {
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
-    .limit(1)
+  const project = await storage.projects.findByIdAndUser(userId, projectId)
   if (!project) throw new AppError('项目不存在')
-
-  const maxIds = await db
-    .select({ id: max(projectVersions.id) })
-    .from(projectVersions)
-    .where(eq(projectVersions.projectId, projectId))
-    .groupBy(projectVersions.versionNumber)
-
-  const ids = maxIds.map((r) => r.id).filter((id): id is number => id != null)
-  if (ids.length === 0) return []
-
-  return db
-    .select()
-    .from(projectVersions)
-    .where(inArray(projectVersions.id, ids))
-    .orderBy(desc(projectVersions.createdAt))
+  return storage.versions.listDistinctByProjectId(projectId)
 }
 
 export async function downloadVersion(userId: number, versionId: number) {
-  const [pv] = await db
-    .select()
-    .from(projectVersions)
-    .where(eq(projectVersions.id, versionId))
-    .limit(1)
+  const pv = await storage.versions.findById(versionId)
   if (!pv) throw new AppError('版本不存在')
 
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, pv.projectId), eq(projects.userId, userId)))
-    .limit(1)
+  const project = await storage.projects.findByIdAndUser(userId, pv.projectId)
   if (!project) throw new AppError('权限不足')
 
   const dir = path.join(env.UPLOAD_BASE_PATH, pv.storagePath)
